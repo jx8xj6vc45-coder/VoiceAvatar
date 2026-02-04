@@ -30,6 +30,8 @@
 		A1000021 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000022; };
 		A1000022 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023; };
 		A1000023 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024; };
+		A1000024 /* CoreMLVoiceService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000025; };
+		A1000025 /* WORLDVocoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000026; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -58,6 +60,8 @@
 		A2000022 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
 		A2000023 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
 		A2000024 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A2000025 /* CoreMLVoiceService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreMLVoiceService.swift; sourceTree = "<group>"; };
+		A2000026 /* WORLDVocoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WORLDVocoder.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -154,6 +158,8 @@
 				A2000020 /* KeychainService.swift */,
 				A2000021 /* SecurityManager.swift */,
 				A2000022 /* BiometricAuthService.swift */,
+				A2000025 /* CoreMLVoiceService.swift */,
+				A2000026 /* WORLDVocoder.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -265,6 +271,8 @@
 				A1000021 /* BiometricAuthService.swift in Sources */,
 				A1000022 /* LockScreenView.swift in Sources */,
 				A1000023 /* SettingsView.swift in Sources */,
+				A1000024 /* CoreMLVoiceService.swift in Sources */,
+				A1000025 /* WORLDVocoder.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -6,16 +6,24 @@ enum ConversionQuality: String, CaseIterable {
     case balanced = "Ausgewogen"
     case highQuality = "Hohe Qualität"
 
-    var frameSize: Int {
+    var description: String {
         switch self {
-        case .fast: return 1024
-        case .balanced: return 2048
-        case .highQuality: return 4096
+        case .fast: return "Schnelle Verarbeitung, Basis-Qualität"
+        case .balanced: return "Gute Balance zwischen Geschwindigkeit und Qualität"
+        case .highQuality: return "Beste Qualität, längere Verarbeitung"
         }
     }
+}
 
-    var hopSize: Int {
-        frameSize / 4
+enum ConversionMethod: String, CaseIterable {
+    case world = "WORLD Vocoder"
+    case phaseVocoder = "Phase Vocoder"
+
+    var description: String {
+        switch self {
+        case .world: return "Hohe Qualität, natürlicher Klang"
+        case .phaseVocoder: return "Schnell, einfache Pitch-Änderung"
+        }
     }
 }
 
@@ -23,10 +31,17 @@ enum ConversionQuality: String, CaseIterable {
 class VoiceConversionEngine: ObservableObject {
     @Published var isProcessing = false
     @Published var progress: Double = 0
+    @Published var progressMessage: String = ""
     @Published var errorMessage: String?
     @Published var outputURL: URL?
+    @Published var conversionMethod: ConversionMethod = .world
 
     private let fileManager = FileManager.default
+    private let worldVocoder = WORLDVocoder.shared
+    private let coreMLService = CoreMLVoiceService.shared
+
+    private var sourceEmbedding: VoiceEmbedding?
+    private var targetEmbedding: VoiceEmbedding?
 
     func convertVoice(
         inputURL: URL,
@@ -35,19 +50,19 @@ class VoiceConversionEngine: ObservableObject {
     ) async throws -> URL {
         isProcessing = true
         progress = 0
+        progressMessage = "Lade Audio..."
 
         defer {
             Task { @MainActor in
                 self.isProcessing = false
+                self.progressMessage = ""
             }
         }
-
-        let inputCharacteristics = try await AudioAnalyzer.shared.analyzeAudioFile(at: inputURL)
-        progress = 0.2
 
         let inputFile = try AVAudioFile(forReading: inputURL)
         let format = inputFile.processingFormat
         let frameCount = UInt32(inputFile.length)
+        let sampleRate = Float(format.sampleRate)
 
         guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw ConversionError.bufferCreationFailed
@@ -58,22 +73,46 @@ class VoiceConversionEngine: ObservableObject {
             throw ConversionError.noAudioData
         }
 
+        let samples = Array(UnsafeBufferPointer(start: inputSamples, count: Int(frameCount)))
+        progress = 0.1
+
+        progressMessage = "Analysiere Eingabe-Stimme..."
+        sourceEmbedding = await coreMLService.extractVoiceEmbedding(from: samples, sampleRate: sampleRate)
+        progress = 0.2
+
+        progressMessage = "Lade Zielprofil..."
+        targetEmbedding = await extractTargetEmbedding(from: targetProfile, sampleRate: sampleRate)
         progress = 0.3
 
-        let samples = Array(UnsafeBufferPointer(start: inputSamples, count: Int(frameCount)))
-        let pitchRatio = targetProfile.characteristics.averagePitch / max(inputCharacteristics.averagePitch, 1)
+        guard let source = sourceEmbedding, let target = targetEmbedding else {
+            throw ConversionError.invalidProfile
+        }
 
-        progress = 0.4
+        let processedSamples: [Float]
 
-        let processedSamples = try await processAudio(
-            samples: samples,
-            sampleRate: Float(format.sampleRate),
-            pitchRatio: pitchRatio,
-            targetCharacteristics: targetProfile.characteristics,
-            quality: quality
-        )
+        switch conversionMethod {
+        case .world:
+            progressMessage = "WORLD Vocoder Analyse..."
+            processedSamples = try await processWithWORLD(
+                samples: samples,
+                sampleRate: sampleRate,
+                sourceEmbedding: source,
+                targetEmbedding: target,
+                quality: quality
+            )
+        case .phaseVocoder:
+            progressMessage = "Phase Vocoder Verarbeitung..."
+            processedSamples = try await processWithPhaseVocoder(
+                samples: samples,
+                sampleRate: sampleRate,
+                sourceEmbedding: source,
+                targetEmbedding: target,
+                quality: quality
+            )
+        }
 
-        progress = 0.8
+        progress = 0.9
+        progressMessage = "Speichere Ergebnis..."
 
         let outputURL = try saveProcessedAudio(
             samples: processedSamples,
@@ -87,17 +126,122 @@ class VoiceConversionEngine: ObservableObject {
         return outputURL
     }
 
-    private func processAudio(
+    private func extractTargetEmbedding(from profile: VoiceProfile, sampleRate: Float) async -> VoiceEmbedding? {
+        guard !profile.sampleURLs.isEmpty else { return nil }
+
+        var allEmbeddings: [VoiceEmbedding] = []
+
+        for sampleURL in profile.sampleURLs {
+            do {
+                let file = try AVAudioFile(forReading: sampleURL)
+                let frameCount = UInt32(file.length)
+
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: frameCount) else {
+                    continue
+                }
+                try file.read(into: buffer)
+
+                guard let samples = buffer.floatChannelData?[0] else { continue }
+                let sampleArray = Array(UnsafeBufferPointer(start: samples, count: Int(frameCount)))
+
+                let embedding = await coreMLService.extractVoiceEmbedding(
+                    from: sampleArray,
+                    sampleRate: Float(file.processingFormat.sampleRate)
+                )
+                allEmbeddings.append(embedding)
+            } catch {
+                continue
+            }
+        }
+
+        guard !allEmbeddings.isEmpty else { return nil }
+
+        return averageEmbeddings(allEmbeddings)
+    }
+
+    private func averageEmbeddings(_ embeddings: [VoiceEmbedding]) -> VoiceEmbedding {
+        let count = Float(embeddings.count)
+
+        let avgF0Mean = embeddings.map(\.f0Mean).reduce(0, +) / count
+        let avgF0Std = embeddings.map(\.f0Std).reduce(0, +) / count
+        let avgEnergy = embeddings.map(\.energy).reduce(0, +) / count
+
+        var avgSpectrum = [Float](repeating: 0, count: embeddings.first?.spectralEnvelope.count ?? 128)
+        for emb in embeddings {
+            for i in 0..<min(avgSpectrum.count, emb.spectralEnvelope.count) {
+                avgSpectrum[i] += emb.spectralEnvelope[i]
+            }
+        }
+        for i in 0..<avgSpectrum.count {
+            avgSpectrum[i] /= count
+        }
+
+        var avgMFCC = [Float](repeating: 0, count: embeddings.first?.mfcc.count ?? 13)
+        for emb in embeddings {
+            for i in 0..<min(avgMFCC.count, emb.mfcc.count) {
+                avgMFCC[i] += emb.mfcc[i]
+            }
+        }
+        for i in 0..<avgMFCC.count {
+            avgMFCC[i] /= count
+        }
+
+        let avgFormants = embeddings.first?.formants ?? [500, 1500, 2500, 3500]
+
+        return VoiceEmbedding(
+            f0Mean: avgF0Mean,
+            f0Std: avgF0Std,
+            spectralEnvelope: avgSpectrum,
+            mfcc: avgMFCC,
+            formants: avgFormants,
+            energy: avgEnergy
+        )
+    }
+
+    private func processWithWORLD(
         samples: [Float],
         sampleRate: Float,
-        pitchRatio: Float,
-        targetCharacteristics: VoiceCharacteristics,
+        sourceEmbedding: VoiceEmbedding,
+        targetEmbedding: VoiceEmbedding,
         quality: ConversionQuality
     ) async throws -> [Float] {
+        progressMessage = "Extrahiere Stimmparameter..."
+        let sourceParams = worldVocoder.analyze(samples: samples, sampleRate: sampleRate)
+        progress = 0.5
+
+        progressMessage = "Konvertiere Stimme..."
+        let convertedParams = worldVocoder.convertVoice(
+            source: sourceParams,
+            targetEmbedding: targetEmbedding,
+            sourceEmbedding: sourceEmbedding
+        )
+        progress = 0.7
+
+        progressMessage = "Synthetisiere Audio..."
+        let output = worldVocoder.synthesize(parameters: convertedParams)
+        progress = 0.85
+
+        return output
+    }
+
+    private func processWithPhaseVocoder(
+        samples: [Float],
+        sampleRate: Float,
+        sourceEmbedding: VoiceEmbedding,
+        targetEmbedding: VoiceEmbedding,
+        quality: ConversionQuality
+    ) async throws -> [Float] {
+        let pitchRatio = sourceEmbedding.pitchRatio(to: targetEmbedding)
         let clampedPitchRatio = max(0.5, min(2.0, pitchRatio))
 
-        let frameSize = quality.frameSize
-        let hopSize = quality.hopSize
+        let frameSize: Int
+        switch quality {
+        case .fast: frameSize = 1024
+        case .balanced: frameSize = 2048
+        case .highQuality: frameSize = 4096
+        }
+
+        let hopSize = frameSize / 4
 
         var outputSamples = [Float](repeating: 0, count: samples.count)
         var window = [Float](repeating: 0, count: frameSize)
@@ -242,6 +386,8 @@ class VoiceConversionEngine: ObservableObject {
 
         let outputFile = try AVAudioFile(forWriting: outputURL, settings: settings)
         try outputFile.write(from: outputBuffer)
+
+        try? SecurityManager.shared.secureFile(at: outputURL)
 
         return outputURL
     }
