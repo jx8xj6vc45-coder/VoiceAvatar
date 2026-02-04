@@ -25,6 +25,11 @@
 		A1000016 /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000016; };
 		A1000017 /* ProfileDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000017; };
 		A1000018 /* Color+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000018; };
+		A1000019 /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000020; };
+		A1000020 /* SecurityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000021; };
+		A1000021 /* BiometricAuthService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000022; };
+		A1000022 /* LockScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000023; };
+		A1000023 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000024; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +53,11 @@
 		A2000017 /* ProfileDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileDetailView.swift; sourceTree = "<group>"; };
 		A2000018 /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
 		A2000019 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000020 /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
+		A2000021 /* SecurityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityManager.swift; sourceTree = "<group>"; };
+		A2000022 /* BiometricAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricAuthService.swift; sourceTree = "<group>"; };
+		A2000023 /* LockScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockScreenView.swift; sourceTree = "<group>"; };
+		A2000024 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -110,6 +120,8 @@
 				A2000017 /* ProfileDetailView.swift */,
 				A2000007 /* VoiceConversionView.swift */,
 				A2000016 /* WaveformView.swift */,
+				A2000023 /* LockScreenView.swift */,
+				A2000024 /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -139,6 +151,9 @@
 				A2000010 /* VoiceProfileManager.swift */,
 				A2000011 /* VoiceConversionEngine.swift */,
 				A2000012 /* AudioAnalyzer.swift */,
+				A2000020 /* KeychainService.swift */,
+				A2000021 /* SecurityManager.swift */,
+				A2000022 /* BiometricAuthService.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -245,6 +260,11 @@
 				A1000016 /* WaveformView.swift in Sources */,
 				A1000017 /* ProfileDetailView.swift in Sources */,
 				A1000018 /* Color+Extensions.swift in Sources */,
+				A1000019 /* KeychainService.swift in Sources */,
+				A1000020 /* SecurityManager.swift in Sources */,
+				A1000021 /* BiometricAuthService.swift in Sources */,
+				A1000022 /* LockScreenView.swift in Sources */,
+				A1000023 /* SettingsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

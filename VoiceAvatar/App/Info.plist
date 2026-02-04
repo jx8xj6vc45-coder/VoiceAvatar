@@ -23,7 +23,9 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>VoiceAvatar needs access to your microphone to record your voice and create voice profiles.</string>
+	<string>VoiceAvatar benötigt Zugriff auf dein Mikrofon, um deine Stimme aufzunehmen und Stimmprofile zu erstellen.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>VoiceAvatar verwendet Face ID, um deine Stimmprofile zu schützen.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -22,6 +22,12 @@ struct ContentView: View {
                     Label("Konvertieren", systemImage: "waveform.circle.fill")
                 }
                 .tag(2)
+
+            SettingsView()
+                .tabItem {
+                    Label("Einstellungen", systemImage: "gearshape.fill")
+                }
+                .tag(3)
         }
         .tint(.accentPurple)
     }
@@ -30,4 +36,5 @@ struct ContentView: View {
 #Preview {
     ContentView()
         .environmentObject(VoiceProfileManager())
+        .environmentObject(BiometricAuthService())
 }

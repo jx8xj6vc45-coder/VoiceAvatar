@@ -7,20 +7,28 @@ class VoiceProfileManager: ObservableObject {
     @Published var activeProfile: VoiceProfile?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var securityStatus: String = ""
 
     private let profilesKey = "voiceProfiles"
     private let activeProfileKey = "activeProfileId"
     private let fileManager = FileManager.default
+    private let securityManager = SecurityManager.shared
+    private let keychainService = KeychainService.shared
+
+    private var useKeychain: Bool = true
 
     init() {
         loadProfiles()
+        Task {
+            await secureExistingData()
+        }
     }
 
     var profilesDirectory: URL {
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let profilesPath = documentsPath.appendingPathComponent("VoiceProfiles", isDirectory: true)
         if !fileManager.fileExists(atPath: profilesPath.path) {
-            try? fileManager.createDirectory(at: profilesPath, withIntermediateDirectories: true)
+            try? securityManager.createSecureDirectory(at: profilesPath)
         }
         return profilesPath
     }
@@ -28,7 +36,12 @@ class VoiceProfileManager: ObservableObject {
     func createProfile(name: String) -> VoiceProfile {
         let profile = VoiceProfile(name: name)
         let profileDirectory = profilesDirectory.appendingPathComponent(profile.id.uuidString, isDirectory: true)
-        try? fileManager.createDirectory(at: profileDirectory, withIntermediateDirectories: true)
+
+        do {
+            try securityManager.createSecureDirectory(at: profileDirectory)
+        } catch {
+            errorMessage = "Fehler beim Erstellen des sicheren Verzeichnisses: \(error.localizedDescription)"
+        }
 
         profiles.append(profile)
         saveProfiles()
@@ -47,7 +60,12 @@ class VoiceProfileManager: ObservableObject {
 
     func deleteProfile(_ profile: VoiceProfile) {
         let profileDirectory = profilesDirectory.appendingPathComponent(profile.id.uuidString, isDirectory: true)
-        try? fileManager.removeItem(at: profileDirectory)
+
+        do {
+            try securityManager.secureDelete(at: profileDirectory)
+        } catch {
+            try? fileManager.removeItem(at: profileDirectory)
+        }
 
         profiles.removeAll { $0.id == profile.id }
         if activeProfile?.id == profile.id {
@@ -72,14 +90,11 @@ class VoiceProfileManager: ObservableObject {
         let destinationURL = profileDirectory.appendingPathComponent(sampleFilename)
 
         do {
-            if fileManager.fileExists(atPath: destinationURL.path) {
-                try fileManager.removeItem(at: destinationURL)
-            }
-            try fileManager.copyItem(at: sampleURL, to: destinationURL)
+            try securityManager.secureCopy(from: sampleURL, to: destinationURL)
             profiles[index].addSample(destinationURL)
             saveProfiles()
         } catch {
-            errorMessage = "Failed to save sample: \(error.localizedDescription)"
+            errorMessage = "Fehler beim sicheren Speichern: \(error.localizedDescription)"
         }
     }
 
@@ -88,7 +103,13 @@ class VoiceProfileManager: ObservableObject {
               sampleIndex < profiles[profileIndex].sampleURLs.count else { return }
 
         let sampleURL = profiles[profileIndex].sampleURLs[sampleIndex]
-        try? fileManager.removeItem(at: sampleURL)
+
+        do {
+            try securityManager.secureDelete(at: sampleURL)
+        } catch {
+            try? fileManager.removeItem(at: sampleURL)
+        }
+
         profiles[profileIndex].removeSample(at: sampleIndex)
         saveProfiles()
     }
@@ -97,7 +118,61 @@ class VoiceProfileManager: ObservableObject {
         return profilesDirectory.appendingPathComponent(profileId.uuidString, isDirectory: true)
     }
 
+    func getSecurityStatus() -> (encrypted: Int, total: Int) {
+        var encrypted = 0
+        var total = 0
+
+        for profile in profiles {
+            for url in profile.sampleURLs {
+                total += 1
+                if securityManager.isFileProtected(at: url) {
+                    encrypted += 1
+                }
+            }
+        }
+
+        return (encrypted, total)
+    }
+
+    private func secureExistingData() async {
+        do {
+            try securityManager.secureDirectory(at: profilesDirectory)
+            let status = getSecurityStatus()
+            securityStatus = "\(status.encrypted)/\(status.total) Dateien gesichert"
+        } catch {
+            securityStatus = "Sicherung fehlgeschlagen"
+        }
+    }
+
     private func loadProfiles() {
+        if useKeychain {
+            loadFromKeychain()
+        } else {
+            loadFromUserDefaults()
+        }
+    }
+
+    private func loadFromKeychain() {
+        do {
+            let decoded: [VoiceProfile] = try keychainService.load(forKey: profilesKey)
+            profiles = decoded
+
+            let activeId: String = try keychainService.load(forKey: activeProfileKey)
+            if let uuid = UUID(uuidString: activeId),
+               let profile = profiles.first(where: { $0.id == uuid }) {
+                activeProfile = profile
+            }
+        } catch KeychainError.notFound {
+            loadFromUserDefaults()
+            if !profiles.isEmpty {
+                migrateToKeychain()
+            }
+        } catch {
+            loadFromUserDefaults()
+        }
+    }
+
+    private func loadFromUserDefaults() {
         guard let data = UserDefaults.standard.data(forKey: profilesKey),
               let decoded = try? JSONDecoder().decode([VoiceProfile].self, from: data) else {
             return
@@ -111,7 +186,44 @@ class VoiceProfileManager: ObservableObject {
         }
     }
 
+    private func migrateToKeychain() {
+        do {
+            try keychainService.save(profiles, forKey: profilesKey)
+            if let activeId = activeProfile?.id.uuidString {
+                try keychainService.save(activeId, forKey: activeProfileKey)
+            }
+
+            UserDefaults.standard.removeObject(forKey: profilesKey)
+            UserDefaults.standard.removeObject(forKey: activeProfileKey)
+        } catch {
+            errorMessage = "Migration zu Keychain fehlgeschlagen"
+        }
+    }
+
     private func saveProfiles() {
+        if useKeychain {
+            saveToKeychain()
+        } else {
+            saveToUserDefaults()
+        }
+    }
+
+    private func saveToKeychain() {
+        do {
+            try keychainService.save(profiles, forKey: profilesKey)
+
+            if let activeId = activeProfile?.id.uuidString {
+                try keychainService.save(activeId, forKey: activeProfileKey)
+            } else {
+                try keychainService.delete(forKey: activeProfileKey)
+            }
+        } catch {
+            saveToUserDefaults()
+            errorMessage = "Keychain-Speicherung fehlgeschlagen, UserDefaults verwendet"
+        }
+    }
+
+    private func saveToUserDefaults() {
         if let encoded = try? JSONEncoder().encode(profiles) {
             UserDefaults.standard.set(encoded, forKey: profilesKey)
         }
@@ -121,5 +233,20 @@ class VoiceProfileManager: ObservableObject {
         } else {
             UserDefaults.standard.removeObject(forKey: activeProfileKey)
         }
+    }
+
+    func deleteAllData() {
+        for profile in profiles {
+            let profileDirectory = profilesDirectory.appendingPathComponent(profile.id.uuidString, isDirectory: true)
+            try? fileManager.removeItem(at: profileDirectory)
+        }
+
+        profiles.removeAll()
+        activeProfile = nil
+
+        try? keychainService.delete(forKey: profilesKey)
+        try? keychainService.delete(forKey: activeProfileKey)
+        UserDefaults.standard.removeObject(forKey: profilesKey)
+        UserDefaults.standard.removeObject(forKey: activeProfileKey)
     }
 }
